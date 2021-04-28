@@ -77,6 +77,7 @@ public final class Application {
         self.lifecycle = .init()
         self.isBooted = false
         self.core.initialize()
+        self.caches.initialize()
         self.views.initialize()
         self.passwords.use(.bcrypt)
         self.sessions.initialize()
@@ -124,7 +125,7 @@ public final class Application {
         self.logger.debug("Application shutting down")
 
         self.logger.trace("Shutting down providers")
-        self.lifecycle.handlers.forEach { $0.shutdown(self) }
+        self.lifecycle.handlers.reversed().forEach { $0.shutdown(self) }
         self.lifecycle.handlers = []
         
         self.logger.trace("Clearing Application storage")
@@ -139,7 +140,7 @@ public final class Application {
             do {
                 try self.eventLoopGroup.syncShutdownGracefully()
             } catch {
-                self.logger.error("Shutting down EventLoopGroup failed: \(error)")
+                self.logger.warning("Shutting down EventLoopGroup failed: \(error)")
             }
         }
 
