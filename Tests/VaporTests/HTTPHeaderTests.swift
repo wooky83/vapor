@@ -130,6 +130,35 @@ final class HTTPHeaderTests: XCTestCase {
             XCTAssertEqual(headers.accept.first(where: { $0.mediaType == .png })?.q, 0.8)
             XCTAssertTrue(headers.accept.comparePreference(for: .xml, to: .png) == .orderedDescending)
         }
+
+        // #2668 Preference should be consistent: present types are preferred to missing types
+        do {
+            headers.replaceOrAdd(name: .accept, value: "image/png;q=0.5")
+            XCTAssertEqual(headers.accept.comparePreference(for: .png, to: .gif), .orderedDescending)
+            XCTAssertEqual(headers.accept.comparePreference(for: .gif, to: .png), .orderedAscending)
+            XCTAssertEqual(headers.accept.comparePreference(for: .png, to: .png), .orderedSame)
+            XCTAssertEqual(headers.accept.comparePreference(for: .gif, to: .gif), .orderedSame)
+        }
+    }
+
+    func testComplexCookieParsing() throws {
+        var headers = HTTPHeaders()
+        do {
+            headers.add(name: .setCookie, value: "SIWA_STATE=CJKxa71djx6CaZ0MwRjtvtJ5Zub+kfaoIEZGoY3wXKA=; Path=/; SameSite=None; HttpOnly; Secure")
+            headers.add(name: .setCookie, value: "vapor-session=TL7r+TS3RNhpEC6HoCfukq+7edNHKF2elF6WiKV4JCg=; Expires=Wed, 02 Jun 2021 14:57:57 GMT; Path=/; SameSite=None; HttpOnly; Secure")
+            XCTAssertEqual(headers.setCookie?.all.count, 2)
+            let siwaState = try XCTUnwrap(headers.setCookie?["SIWA_STATE"])
+            XCTAssertEqual(siwaState.sameSite, HTTPCookies.SameSitePolicy.none)
+            XCTAssertEqual(siwaState.expires, nil)
+            XCTAssertTrue(siwaState.isHTTPOnly)
+            XCTAssertTrue(siwaState.isSecure)
+
+            let vaporSession = try XCTUnwrap(headers.setCookie?["vapor-session"])
+            XCTAssertEqual(vaporSession.sameSite, HTTPCookies.SameSitePolicy.none)
+            XCTAssertEqual(vaporSession.expires, Date(timeIntervalSince1970: 1622645877))
+            XCTAssertTrue(siwaState.isHTTPOnly)
+            XCTAssertTrue(siwaState.isSecure)
+        }
     }
 
     func testForwarded_quote() throws {
@@ -327,5 +356,42 @@ final class HTTPHeaderTests: XCTestCase {
             HTTPHeaders.ContentRange(directive: HTTPHeaders.Directive(value: "bytes 0-1000/1001")),
             HTTPHeaders.ContentRange(unit: .bytes, range: .withinWithLimit(start: 0, end: 1000, limit: 1001))
         )
+    }
+    
+    func testLinkHeaderParsing() throws {
+        let headers = HTTPHeaders([
+            ("link", #"<https://localhost/?a=1>; rel="next", <https://localhost/?a=2>; rel="last"; custom1="whatever", </?a=-1>; rel=related, </?a=-2>; rel=related"#)
+        ])
+        
+        XCTAssertEqual(headers.links?.count, 4)
+        let a = try XCTUnwrap(headers.links?.dropFirst(0).first),
+            b = try XCTUnwrap(headers.links?.dropFirst(1).first),
+            c = try XCTUnwrap(headers.links?.dropFirst(2).first),
+            d = try XCTUnwrap(headers.links?.dropFirst(3).first)
+        XCTAssertEqual(a.uri, "https://localhost/?a=1")
+        XCTAssertEqual(a.relation, .next)
+        XCTAssertEqual(a.attributes, [:])
+        XCTAssertEqual(b.uri, "https://localhost/?a=2")
+        XCTAssertEqual(b.relation, .last)
+        XCTAssertEqual(b.attributes, ["custom1": "whatever"])
+        XCTAssertEqual(c.uri, "/?a=-1")
+        XCTAssertEqual(c.relation, .related)
+        XCTAssertEqual(c.attributes, [:])
+        XCTAssertEqual(d.uri, "/?a=-2")
+        XCTAssertEqual(d.relation, .related)
+        XCTAssertEqual(d.attributes, [:])
+    }
+    
+    func testLinkHeaderSerialization() throws {
+        let links: [HTTPHeaders.Link] = [
+            .init(uri: "https://localhost/?a=1", relation: .next, attributes: [:]),
+            .init(uri: "https://localhost/?a=2", relation: .last, attributes: ["custom1": "whatever"]),
+            .init(uri: "/?a=-1", relation: .related, attributes: [:]),
+            .init(uri: "/?a=-2", relation: .related, attributes: [:]),
+        ]
+        var headers = HTTPHeaders()
+        
+        headers.links = links
+        XCTAssertEqual(headers.first(name: .link), #"<https://localhost/?a=1>; rel=next, <https://localhost/?a=2>; rel=last; custom1=whatever, </?a=-1>; rel=related, </?a=-2>; rel=related"#)
     }
 }
