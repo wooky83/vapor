@@ -14,7 +14,7 @@
         <img src="https://img.shields.io/badge/license-MIT-brightgreen.svg" alt="MIT License">
     </a>
     <a href="https://github.com/vapor/vapor/actions">
-        <img src="https://github.com/vapor/vapor/workflows/test/badge.svg" alt="Continuous Integration">
+        <img src="https://github.com/vapor/vapor/workflows/test/badge.svg?branch=main" alt="Continuous Integration">
     </a>
     <a href="https://swift.org">
         <img src="https://img.shields.io/badge/swift-5.2-brightgreen.svg" alt="Swift 5.2">
@@ -60,6 +60,9 @@ Support Vapor's development by [becoming a sponsor](https://github.com/sponsors/
 </a>
 <a href="https://github.com/MrLotU">
     <img src="https://user-images.githubusercontent.com/1342803/79599312-426a8580-80b3-11ea-89b3-8b2722485e37.png" height="100px" alt="Jari">
+</a>
+<a href="https://macstadium.com">
+    <img src="https://uploads-ssl.webflow.com/5ac3c046c82724970fc60918/5c019d917bba312af7553b49_MacStadium-developerlogo.png" height="100px" alt="MacStadium">
 </a>
 
 

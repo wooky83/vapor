@@ -137,6 +137,49 @@ class ValidationTests: XCTestCase {
             XCTAssertEqual("\(error)", "name contains '!' (allowed: A-Z, a-z, 0-9)")
         }
     }
+    
+    func testValidateInternationalEmail() throws {
+        struct Email: Validatable, Codable {
+            var email: String?
+            
+            init(email: String) {
+                self.email = email
+            }
+            
+            static func validations(_ v: inout Validations) {
+                // validate the international email is valid and is not nil
+                v.add("email", as: String?.self, is: !.nil && .internationalEmail)
+                v.add("email", as: String?.self, is: .internationalEmail && !.nil) // test other way
+            }
+        }
+        
+        let valid = """
+        {
+            "email": "ß@tanner.xyz"
+        }
+        """
+        XCTAssertNoThrow(try Email.validate(json: valid))
+        
+        let validURL: URI = "https://tanner.xyz/email?email=ß@tanner.xyz"
+        XCTAssertNoThrow(try Email.validate(query: validURL))
+        
+        let validURL2: URI = "https://tanner.xyz/email?email=me@ßanner.xyz"
+        XCTAssertNoThrow(try Email.validate(query: validURL2))
+        
+        let invalidUser = """
+        {
+            "email": "me@tanner@.xyz",
+        }
+        """
+        XCTAssertThrowsError(try Email.validate(json: invalidUser)) { error in
+            XCTAssertEqual("\(error)", "email is not a valid email address, email is not a valid email address")
+        }
+        
+        let invalidUserURL: URI = "https://tanner.xyz/email?email=me@tanner@.xyz"
+        XCTAssertThrowsError(try Email.validate(query: invalidUserURL)) { error in
+            XCTAssertEqual("\(error)", "email is not a valid email address, email is not a valid email address")
+        }
+    }
 
     func testValidateNested() throws {
         struct User: Validatable, Codable {
@@ -370,6 +413,13 @@ class ValidationTests: XCTestCase {
         assert("tanner@codes", fails: .email, "is not a valid email address")
         assert("asdf", fails: .email, "is not a valid email address")
         assert("asdf", passes: !.email)
+    }
+    
+    func testEmailWithSpecialCharacters() {
+        assert("ß@b.com", passes: .internationalEmail)
+        assert("ß@b.com", fails: !.internationalEmail, "is a valid email address")
+        assert("b@ß.com", passes: .internationalEmail)
+        assert("b@ß.com", fails: !.internationalEmail, "is a valid email address")
     }
 
     func testRange() {
@@ -657,6 +707,65 @@ class ValidationTests: XCTestCase {
             XCTAssertEqual(name.key.stringValue, "name")
             XCTAssertEqual(name.result.isFailure, true)
             XCTAssertEqual(name.result.failureDescription, "is not a(n) String")
+        }
+    }
+    
+    func testCustomFailureDescriptions() throws {
+        struct User: Validatable {
+            var name: String
+            var age: Int
+            var hobbies: [Hobby]
+
+            struct Hobby: Codable {
+                var title: String
+                init(title: String) {
+                    self.title = title
+                }
+            }
+
+            static func validations(_ v: inout Validations) {
+                struct CustomValidatorResult: ValidatorResult {
+                    var isFailure: Bool {
+                        true
+                    }
+                    var successDescription: String? {
+                        nil
+                    }
+                    var failureDescription: String? {
+                        "custom description"
+                    }
+                }
+
+                v.add("key", result: CustomValidatorResult(), customFailureDescription: "Something went wrong with the provided data")
+                v.add("name", as: String.self, is: .count(5...) && !.alphanumeric, customFailureDescription: "The provided name is invalid")
+                v.add(each: "hobbies", customFailureDescription: "A provided hobby value was not alphanumeric") { i, hobby in
+                    hobby.add("title", as: String.self, is: .count(5...) && .characterSet(.alphanumerics + .whitespaces))
+                }
+                v.add("hobbies", customFailureDescription: "A provided hobby value was empty") { hobby in
+                    hobby.add("title", as: String.self, is: !.empty)
+                }
+            }
+        }
+
+        let invalidNestedArray = """
+        {
+            "name": "Andre",
+            "age": 26,
+            "hobbies": [
+                {
+                    "title": "Running€"
+                },
+                {
+                    "title": "Co"
+                },
+                {
+                    "title": ""
+                }
+            ]
+        }
+        """
+        XCTAssertThrowsError(try User.validate(json: invalidNestedArray)) { error in
+            XCTAssertEqual("\(error)", "Something went wrong with the provided data, The provided name is invalid, A provided hobby value was not alphanumeric, A provided hobby value was empty")
         }
     }
 

@@ -1,4 +1,5 @@
 import NIO
+import NIOHTTP1
 
 /// Represents an HTTP request in an application.
 public final class Request: CustomStringConvertible {
@@ -31,6 +32,26 @@ public final class Request: CustomStringConvertible {
     ///     req.route?.description // "GET /hello/:name"
     ///
     public var route: Route?
+
+    /// We try to determine true peer address if load balacer or reversed proxy provided info in headers
+    ///
+    /// Priority of getting value from headers is as following:
+    ///
+    /// 1. try the "Forwarded" header (e.g. for=192.0.2.60; proto=http; by=203.0.113.43)
+    /// 2. try the "X-Forwarded-For" header (e.g. client_IP, proxy1_IP, proxy2_IP)
+    /// 3. fallback to the socket's remote address provided by SwiftNIO ( e.g. 192.0.2.60:62934)
+    /// in 1. and 2. will use port 80 as default port, and  3. will have port number provided by NIO if any
+    public var peerAddress: SocketAddress? {
+        if let clientAddress = headers.forwarded.first?.for {
+            return try? SocketAddress.init(ipAddress: clientAddress, port: 80)
+        }
+
+        if let xForwardedFor = headers.first(name: .xForwardedFor) {
+            return try? SocketAddress.init(ipAddress: xForwardedFor, port: 80)
+        }
+
+        return self.remoteAddress
+    }
 
     // MARK: Content
 
@@ -67,7 +88,7 @@ public final class Request: CustomStringConvertible {
         }
 
         func encode<E>(_ encodable: E, using encoder: ContentEncoder) throws where E : Encodable {
-            var body = ByteBufferAllocator().buffer(capacity: 0)
+            var body = self.request.byteBufferAllocator.buffer(capacity: 0)
             try encoder.encode(encodable, to: &body, headers: &self.request.headers)
             self.request.bodyStorage = .collected(body)
         }
@@ -83,7 +104,7 @@ public final class Request: CustomStringConvertible {
         func encode<C>(_ content: C, using encoder: ContentEncoder) throws where C : Content {
             var content = content
             try content.beforeEncode()
-            var body = ByteBufferAllocator().buffer(capacity: 0)
+            var body = self.request.byteBufferAllocator.buffer(capacity: 0)
             try encoder.encode(content, to: &body, headers: &self.request.headers)
             self.request.bodyStorage = .collected(body)
         }
@@ -162,6 +183,8 @@ public final class Request: CustomStringConvertible {
 
     /// This container is used as arbitrary request-local storage during the request-response lifecycle.Z
     public var storage: Storage
+
+    public var byteBufferAllocator: ByteBufferAllocator
     
     public convenience init(
         application: Application,
@@ -172,6 +195,7 @@ public final class Request: CustomStringConvertible {
         collectedBody: ByteBuffer? = nil,
         remoteAddress: SocketAddress? = nil,
         logger: Logger = .init(label: "codes.vapor.request"),
+        byteBufferAllocator: ByteBufferAllocator = ByteBufferAllocator(),
         on eventLoop: EventLoop
     ) {
         self.init(
@@ -183,6 +207,7 @@ public final class Request: CustomStringConvertible {
             collectedBody: collectedBody,
             remoteAddress: remoteAddress,
             logger: logger,
+            byteBufferAllocator: byteBufferAllocator,
             on: eventLoop
         )
         if let body = collectedBody {
@@ -199,6 +224,7 @@ public final class Request: CustomStringConvertible {
         collectedBody: ByteBuffer? = nil,
         remoteAddress: SocketAddress? = nil,
         logger: Logger = .init(label: "codes.vapor.request"),
+        byteBufferAllocator: ByteBufferAllocator = ByteBufferAllocator(),
         on eventLoop: EventLoop
     ) {
         self.application = application
@@ -218,5 +244,6 @@ public final class Request: CustomStringConvertible {
         self.isKeepAlive = true
         self.logger = logger
         self.logger[metadataKey: "request-id"] = .string(UUID().uuidString)
+        self.byteBufferAllocator = byteBufferAllocator
     }
 }
