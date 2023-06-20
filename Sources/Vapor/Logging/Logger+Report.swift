@@ -1,3 +1,6 @@
+import Foundation
+import Logging
+
 extension Logger {
     /// Reports an `Error` to this `Logger`.
     ///
@@ -5,7 +8,7 @@ extension Logger {
     ///     - error: `Error` to log.
     public func report(
         error: Error,
-        file: String = #file,
+        file: String = #fileID,
         function: String = #function,
         line: UInt = #line
     ) {
@@ -29,12 +32,8 @@ extension Logger {
             reason = localized.localizedDescription
             source = nil
             level = .warning
-        case let convertible as CustomStringConvertible:
-            reason = convertible.description
-            source = nil
-            level = .warning
         default:
-            reason = "\(error)"
+            reason = String(reflecting: error)
             source = nil
             level = .warning
         }
